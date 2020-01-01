@@ -22,7 +22,7 @@ from time import ctime ,sleep
 from fabric import Connection
 import sys
 import os 
-import getpass
+from pprint import pprint
 
 
 #函数menu：显示编译阶段的前台界面显示菜单
@@ -78,6 +78,7 @@ def getmenu():
 
 
 #各个模块的菜单界面展示
+#模块一：输入主机用户名密码，进行资料储存，并且打印SSH命令行界面
 def MenuNewssh():
     print('>>>>>请按照提示进行输入\n')
     hostinfo = [] 
@@ -91,9 +92,24 @@ def MenuNewssh():
     Newssh(hostinfo)
 
 
-
 def MenuOpensshcsv():
-    pass
+    print('''
+    1.直接搜索：
+    2.全量寻找
+    0.返回上级菜单    
+    ''')
+    selectTrigger = input('请输入你的选择：')
+    if selectTrigger == '1':
+        searchinfo = searchFromCSV()
+    elif selectTrigger == '2':
+        searchinfo = allFromCSV()
+    else:
+        getmenu()
+    Newssh(searchinfo)
+
+
+
+
 def MenuFabricGetOrPut():
     pass
 def MenuFabricRunDouble():
@@ -110,7 +126,7 @@ def MenuPasswordCracking():
 #第一个模块的设计，这个模块设计成两个部分，一部分从用户输入读取相关信息，另一个部分是建立连接，中间要加入一个校验的功能
 #校验功能的作用是判断用户的输入是否能够连接到主机，如果有误，重新进行密码输入，如果无误，建立连接，并且将主机信息保存到相关csv文件中
 #保存模块的设计：先判断该主机的该用户是否已经添加到文件中，如果添加过，则不再添加，如果没有添加过，添加进去
-
+#突然发现保存模块有问题，设计的不合理，如果是一个主机上的其他用户，那就添加不了了，这个现在改一下
 
 #设计类一：HostConn，负责建立ssh连接对象
 class HostConn():#info传入一个列表，为主机的信息
@@ -120,7 +136,9 @@ class HostConn():#info传入一个列表，为主机的信息
         self.password = info[2]
         self.run = Connection(self.host,self.username,port = 22,connect_kwargs={"password": self.password}).run
 
-
+#下面的这三个函数是嵌套的，完成一个命令行界面的功能，其中NewSSH完成信息的收集并且判断是否为新主机
+#infoincsv的功能是将新出现的主机添加到文件中去
+#SSHcommand是主力，完成命令行的交互，以及错误的显示，只能是一个粗糙的界面，还做不到非常细致，要继续改进
 def Newssh(hostinfo):
     host = HostConn(hostinfo)
     try:
@@ -137,7 +155,7 @@ def infoincsv(hostinfo):
     with open('hostinfo.csv','r') as f:
         for line in f:
             host = line.strip().split(',')
-            if hostinfo[0] == host[0]:
+            if hostinfo[0] == host[0] and hostinfo[1] == host[1]:
                 mark = True            
     #print(mark)
     if not mark :
@@ -158,7 +176,7 @@ def SSHCommand(host):
             print('Can not excute this command!!')
             SSHCommand()
         if sshcommand == 'exit' :
-            sys.exit(0)
+            getmenu()
         else:
             if 'cd' in sshcommand:
                 sshcommand1 = sshcommand.strip().split(' ')
@@ -185,10 +203,66 @@ def SSHCommand(host):
                 print('Please check it!!')
 
 
+#接下来是第二个模块的编写，这个比较简单，完成的功能为显示所有连接过的主机，然后询问连接哪一台，用户输入选择后，开始启动连接    
+
+def searchFromCSV():
+    searchHost = input('请输入你想要检索的主机IP：  ')
+    searchUsername = input('请输入你想要检索的用户名： ')
+    with open('hostinfo.csv','r') as f :
+        for line in f:
+            hostinfo = line.strip().split(',')
+            #print(hostinfo)
+            if searchHost == hostinfo[0] and searchUsername == hostinfo[1]:
+                return hostinfo
+                
     
+        print('你检索的用户不存在，请重新检索！')
+        MenuOpensshcsv()
 
 
+def allFromCSV():
+    number = 1
+    hostdict = {}
+    with open('hostinfo.csv','r') as f:
+        for line in f:
+            info =line.strip().split(',')
+            hostip = info[0]
+            hostuser = info [1]
+            userAtIp = hostuser +'@' +hostip 
+            hostdict[number]= userAtIp
+            number +=1
+    pprint(hostdict)
+    seelctTrigger =int(input('请输入你选择的主机的号码：  '))
+    hostfromdict =hostdict[seelctTrigger]
+    infoSelect = hostfromdict.split('@')
+    ip = infoSelect[1]
+    user = infoSelect[0]
+    with open('hostinfo.csv','r') as f :
+        for line in f:
+            hostinfo = line.strip().split(',')
+            if ip == hostinfo[0] and user == hostinfo[1]:
+                return hostinfo
+                break
 
+
+#写一个上面两个的结合体，传入两个参数，分别是主机地址和用户名，下面这个函数进行检索，然后return一个列表出去
+#传入的格式要求：root@1.1.1.1这种,不对外暴露接口可以用这种方式传递参数
+#            hostip = info[0]
+#            hostuser = info [1]
+#            userAtIp = hostuser +'@' +hostip 
+def searchInCSV(userAtIp):
+    infoSelect= userAtIp.strip().split('@')
+    ip = infoSelect[1]
+    user = infoSelect[0]
+    with open('hostinfo.csv','r') as f :
+        for line in f:
+            hostinfo = line.strip().split(',')
+            if ip == hostinfo[0] and user == hostinfo[1]:
+                return hostinfo
+                break
+    return None
+   
+ 
 
 
 
