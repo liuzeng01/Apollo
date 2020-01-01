@@ -149,13 +149,41 @@ def infoincsv(hostinfo):
 
 
 def SSHCommand(host):
-    mark = True
+    mark = True 
+    path = host.run('pwd',hide = True ,warn = True).stdout
     while mark:
-        sshcommand = input ('>>>>>>>>')
+        try:
+            sshcommand = input ( '['+path+']  ' + '>>>>>')
+        except Exception as identifier:
+            print('Can not excute this command!!')
+            SSHCommand()
         if sshcommand == 'exit' :
-            mark = False
-        else :
-            host.run('ls')
+            sys.exit(0)
+        else:
+            if 'cd' in sshcommand:
+                sshcommand1 = sshcommand.strip().split(' ')
+                if sshcommand1[-1][0]  !=  '/' :
+                    commandpath = path +'/'+sshcommand1[-1]
+                    sshcommand = 'cd ' + commandpath
+            cdcommand = 'cd ' + path
+            testerr = host.run(sshcommand,hide = True,warn = True).stderr
+            if not testerr:
+                pathcommand =cdcommand + '&&' + sshcommand + '&&' + 'pwd'
+                try:
+                    RunResult =host.run(pathcommand,hide = True ,warn = True)
+                    out = RunResult.stdout
+                    err = RunResult.stdout
+                    clearout = out.strip().split('\n')
+                    path = clearout[-1]
+                    outs = clearout[0:-1]
+                    print(out)
+                    #print(err,end = '')
+                except Exception as identifier:
+                    print('An unknown error had happend,try to connect the remote host agin')
+            else:
+                print(testerr)
+                print('Please check it!!')
+
 
     
 
