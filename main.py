@@ -23,7 +23,10 @@ from fabric import Connection
 import sys
 import os 
 from pprint import pprint
+import logging 
+import logging.config
 
+logging.config.fileConfig('log.conf')
 
 #函数menu：显示编译阶段的前台界面显示菜单
 
@@ -51,6 +54,7 @@ def getmenu():
         selectinfo = int(input('请选择功能模块： '))
         if not selectinfo:
             print('即将退出程序，请稍等！')
+            sleep(5)
             sys.exit()
         elif selectinfo == 1:
             MenuNewssh()
@@ -108,12 +112,37 @@ def MenuOpensshcsv():
     Newssh(searchinfo)
 
 
-
+#模块三功能菜单
 
 def MenuFabricGetOrPut():
-    pass
+    print('''
+    请选择上传或者下载功能（上传的文件格式应为压缩包格式）
+    1.上传
+    2.下载
+    0.退出到首页''')
+    selecttrigger = input('请输入你的选择： ')
+    if selecttrigger == '1':
+        PutIntoHost()
+    elif selecttrigger == '2':
+        GetFromHost()
+    else:
+        getmenu()
+
+
 def MenuFabricRunDouble():
-    pass 
+    print('''
+        请选择执行方式：
+        1.输入单条命令多主机执行
+        2.输入shell脚本执行
+    ''')
+    selectinfo = input('请选择执行方式： ')
+    if selectinfo ==  '2':
+        shellBatchRun()
+    else:
+        BatchRun() 
+
+
+
 def MenuHostInfoCollect():
     pass
 def MenuTimeTask():
@@ -134,6 +163,9 @@ class HostConn():#info传入一个列表，为主机的信息
         self.host=info[0]
         self.username = info[1]
         self.password = info[2]
+        self.conn =  Connection(self.host,self.username,port = 22,connect_kwargs={"password": self.password})
+        self.put = self.conn.put
+        self.get = self.conn.get
         self.run = Connection(self.host,self.username,port = 22,connect_kwargs={"password": self.password}).run
 
 #下面的这三个函数是嵌套的，完成一个命令行界面的功能，其中NewSSH完成信息的收集并且判断是否为新主机
@@ -145,7 +177,15 @@ def Newssh(hostinfo):
         host.run('echo "Connect to the remote host successfully!!!"')
     except Exception as identifier:
         print('主机连接失败，请重新输入相关信息')
-        MenuNewssh()
+        selecttrigger = input('是否继续输入？0:取消 1:继续输入 2：全量查找  ')
+        if selecttrigger == '1':
+            MenuNewssh()
+        elif selecttrigger == '2':
+            allFromCSV()
+        else:
+            getmenu()
+            
+        
     infoincsv(hostinfo)
     SSHCommand(host)
 
@@ -264,8 +304,163 @@ def searchInCSV(userAtIp):
    
  
 
+def SelectHost():
+    print('请开始输入想要选择的主机，格式应为:  mysql@10.10.10.10,oracle@10.10.10.12,...... 按回车结束输入   ')
+    selectString  = input('请开始输入 ： ')
+    select1 = selectString.strip().split(',')
+    selectList = []
+    for useratip in select1:
+        selectkey = useratip.strip().split('@')
+        ip = selectkey[1]
+        user = selectkey[0]
+        with open('hostinfo.csv','r') as f :
+            for line in f:
+                hostinfo = line.strip().split(',')
+                if ip == hostinfo[0] and user == hostinfo[1]:
+                    selectList.append(hostinfo)
+    return selectList
 
 
+def BatchSelect():
+    number = 1
+    hostdict = {}
+    with open('hostinfo.csv','r') as f:
+        for line in f:
+            info =line.strip().split(',')
+            hostip = info[0]
+            hostuser = info [1]
+            userAtIp = hostuser +'@' +hostip 
+            hostdict[number]= userAtIp
+            number +=1
+    pprint(hostdict)
+    selecttNumber =input('请输入你想要选择的主机的编号，以逗号分隔（注意：应为英文逗号 ，按回车结束输入）  ：  ')
+    selectInfo = selecttNumber.strip().split(',')
+    #print(selectInfo)
+    selectList=[]
+    for number in selectInfo:
+        number = int(number)
+        searchResult = hostdict[number]
+        infoSelect = searchResult.split('@')
+        #print(infoSelect)
+        ip = infoSelect[1]
+        user = infoSelect[0]
+        #print(ip,user)
+        with open('hostinfo.csv','r') as f :
+            for line in f:
+                hostinfo = line.strip().split(',')
+                #print(hostinfo)
+                if ip == hostinfo[0] and user == hostinfo[1]:
+                    selectList.append(hostinfo)
+                    #print(selectList)
+    
+    print(selectList)
+    return selectList
+
+#loglevel记录日志的级别
+#runcommand与前面ssh命令行的模块不同之处：接受一个主机和命令的输入，用于批量执行命令的模块
+#但是只能跑单条命令
+#如果想要跑多条命令的话，后面会增加一个模块，将命令写到一个shell文件中，直接推到服务器上去，然后执行，这个可以和第三个模块的功能一起实现
+def runCommand(hostinfo,runcommand):
+    host = HostConn(hostinfo)    
+    try:
+        result = host.run(runcommand,warn =True,hide = True)
+        print(hostinfo[0]+ ' : ' + result.stdout)
+        logging.debug(hostinfo[0]+ ' : ' +result.stdout)
+        #logging.warn(result.warn)
+        logging.error(hostinfo[0]+ ' : ' +result.stderr)
+
+    except Exception as identifier:
+        print('执行命令失败，请检查原因')
+
+
+def PutIntoHost():
+    print('''
+            1.手动输入挑选
+            2.按照编号挑选
+    
+    ''')
+    selectMethod = input('请输入挑选方式 ： ')
+    if selectMethod == '1':
+        hostlist = SelectHost()
+    else:
+        hostlist = BatchSelect()
+    LocalPath = input('请输入选择上传文件的绝对路径： ')
+    #print(LocalPath)
+    remotepath = input('请输入选择上传文件的主机目录： ')
+    #print(remotepath)
+    print('请耐心等待，时间视网络速度与文件大小而定  ')
+    for Host in hostlist:
+        #print(host)
+        host = HostConn(Host)
+        #host.put(localpath,remotepath)
+        try:
+            host.put(LocalPath,remotepath)
+            print('%s主机传输文件任务完成！ '%Host[0])
+            logging.info('%s主机传输文件任务完成,传输文件为%s,传输路径为%s '%(Host[0],LocalPath,remotepath))
+            # print(result)
+        except Failure as identifier:
+            print('%s的%s上传失败'%(host,LocalPath))
+        
+
+def GetFromHost():
+    print('''
+            1.手动输入挑选
+            2.按照编号挑选
+    
+    ''')
+    selectMethod = input('请输入挑选方式 ： ')
+    if selectMethod == '1':
+        hostlist = SelectHost()
+    else:
+        hostlist = BatchSelect()
+    
+    remotepath = input('请输入选择下载的文件（输入绝对路径）： ')
+    LocalPath = input('请输入选择下载文件的存储路径： ')
+    #print(LocalPath)
+
+    #print(remotepath)
+    print('请耐心等待，时间视网络速度与文件大小而定  ')
+    for Host in hostlist:
+        #print(host)
+        host = HostConn(Host)
+        LocalPath = LocalPath +Host[0] 
+        #(localpath,remotepath)
+        try:
+            host.get(remotepath,LocalPath)
+            print('%s主机传输文件任务完成！ '%Host[0])
+            logging.info('%s主机传输文件任务完成,下载文件为%s,存储路径为%s '%(Host[0],remotepath,LocalPath))
+            # print(result)
+        except Exception as identifier:
+            print('%s的%s下载失败'%(host,LocalPath))
+            logging.warn('%s主机传输文件任务失败,下载文件为%s,存储路径为%s '%(Host[0],remotepath,LocalPath))
+           
+
+
+def BatchRun():
+    print('''
+            请选择执行命令的主机：
+            1.手动输入挑选
+            2.按照编号挑选
+    
+    ''')
+    selectMethod = input('请输入挑选方式 ： ')
+    if selectMethod == '1':
+        hostlist = SelectHost()
+    else:
+        hostlist = BatchSelect()
+    mark = True 
+    while mark:
+            
+        runcommand = input('请输入想要执行的命令： ')
+        for host in hostlist:
+            runCommand(host,runcommand)
+        continuetrigger = input ('是否继续输入命令？ 0：退出 1：继续 ')
+        if continuetrigger == '0':
+            mark = False
+
+
+def shellBatchRun():
+    pass
 
 
 
